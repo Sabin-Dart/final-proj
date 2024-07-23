@@ -7,29 +7,77 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("/Users/sabinhart/Desktop/QBS 103 - R/final-proj"))
+setwd("/Users/sabinhart/Desktop/QBS 103 - R/final-proj")
 ```
 
 ## Library Imports
-```{r}
+```{r, echo = FALSE}
 library(tidyverse)
+library(stringr)
 ```
 
 ## Data Import
 ```{r}
+gene_data_raw <- read_csv("./final-data/QBS103_GSE157103_genes.csv")
+pheno_data_raw <- read_csv("./final-data/QBS103_GSE157103_series_matrix.csv")
+```
 
+## Data cleaning and merging
+```{r}
+
+# flipping gene data 
+gene_data <- gene_data_raw %>% 
+  rename("gene_name" = 1) %>% 
+  column_to_rownames("gene_name") %>% 
+  t() %>% 
+  data.frame() %>% 
+  rownames_to_column("participant_id")
+
+# combine data
+cleaned_data <- gene_data %>% 
+  merge(pheno_data_raw, by='participant_id') %>% 
+  mutate(participant_id = as.numeric(sub(".*_(\\d+)_.*", "\\1", participant_id))) %>%
+  mutate(participant_id = case_when(
+    grepl('non', disease_status, ignore.case = TRUE) ~ participant_id + 200,
+    TRUE ~ participant_id
+  )) %>% 
+  arrange(participant_id)
+
+rm(gene_data, gene_data_raw, pheno_data_raw)
+```
+
+# plot 1
+```{r, gene expression histogram}
+
+plot1_data <- cleaned_data %>% 
+  select('ABCA7')
+
+plot1 <- ggplot(data = plot1_data, aes(x = ABCA7)) +
+  geom_histogram(fill = '#7f7da2', bins = 12, binwidth = 5, center = 2.5) +
+  geom_vline(xintercept = mean(plot1_data$ABCA7), linetype = 'dashed', color = 'darkslategrey') +
+  annotate("text", x = 30.5, y = 23, color = 'darkslategrey', label = 'Mean expression') +
+  theme_minimal() +
+  labs(title = "Gene Expression Histogram",
+       x = "Expression of ABCA7",
+       y = "Number of Samples") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(breaks = seq(0, 70, 10))
+plot1
 ```
 
 
-```{r cars}
-summary(cars)
-```
 
-## Including Plots
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+
+
+
+
+
+
+
