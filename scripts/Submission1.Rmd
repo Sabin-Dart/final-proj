@@ -2,7 +2,9 @@
 title: "Submission 1 Script"
 author: "Sabin Hart"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -47,12 +49,13 @@ cleaned_data <- gene_data %>%
 rm(gene_data, gene_data_raw, pheno_data_raw)
 ```
 
-# plot 1
+plot 1
 ```{r, gene expression histogram}
-
+# data prep
 plot1_data <- cleaned_data %>% 
   select('ABCA7')
 
+# create plot
 plot1 <- ggplot(data = plot1_data, aes(x = ABCA7)) +
   geom_histogram(fill = '#7f7da2', bins = 12, binwidth = 5, center = 2.5) +
   geom_vline(xintercept = mean(plot1_data$ABCA7), linetype = 'dashed', color = 'darkslategrey') +
@@ -67,10 +70,72 @@ plot1
 ```
 
 
+plot 2
+```{r, gene expression scatterplot}
 
+# data prep
+plot2_data <- cleaned_data %>% 
+  filter(apacheii != 'unknown') %>% 
+  select(apacheii, ABCA7)
 
+# create plot
+plot2 <- ggplot(data = plot2_data, aes(x=ABCA7, y = as.numeric(`apacheii`))) +
+  geom_point() +
+  geom_smooth(method='lm', formula= y~x, color = 'darkslategray') +
+  theme_minimal() +
+  labs(title = "ICU Disease Severity versus Gene Expression",
+       x = "Expression of ABCA7",
+       y = "APACHE II Score",
+       caption = "Line of best fit and standard error") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(limits = c(0, 45))
 
+plot2
+```
 
+plot 3
+```{r, segregated boxplot}
+
+# data prep
+plot3_data <- cleaned_data %>% 
+  mutate(sexXicu_status = case_when(
+    sex == 'male' & icu_status == 'no' ~ 'male_no',
+    sex == 'female' & icu_status == 'no' ~ 'female_no',
+    sex == 'male' & icu_status == 'yes' ~ 'male_yes',
+    sex == 'female' & icu_status == 'yes' ~ 'female_yes')) %>% 
+  select(sexXicu_status, sex, icu_status, ABCA7) %>% 
+  filter(!is.na(sexXicu_status))
+
+# create plot
+plot3 <- ggplot(data = plot3_data, aes(x = sexXicu_status, y = ABCA7, color = sexXicu_status)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Gene Expression by Sex and ICU Status",
+       y = "Expression of ABCA7",
+       x = "Sex and ICU Status") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  scale_x_discrete(labels=(c("Female, No ICU", "Female, ICU", "Male, No ICU", 'Male, ICU'))) +
+  scale_colour_brewer(palette = "Set1")
+  
+plot3
+```
+
+save plots
+```{r}
+
+# plot 1
+# ggsave('gene_histo.pdf', plot=plot1, device = 'pdf', path = '../plots')
+
+# plot 2
+# ggsave('gene_scatter.pdf', plot=plot2, device = 'pdf', path = '../plots')
+
+# plot 3
+# ggsave('gene_boxplot.pdf', plot=plot3, device = 'pdf', path = '../plots')
+
+# commented out to not resave on knitting
+
+```
 
 
 
