@@ -15,6 +15,7 @@ Library Imports
 ```{r, echo = FALSE}
 library(tidyverse)
 library(stringr)
+library(rlist)
 ```
 
 Import, clean, and combine data
@@ -45,13 +46,141 @@ rm(gene_data, gene_data_raw, pheno_data_raw)
 
 Function 1: Histogram
 ```{r}
+create_histo <- function(df, genes) {
+  
+  # create list for returning all plots
+  histogram_list = list()
+  
+  # loop over provided genes
+  for (gene in genes) {
+    data <- df %>% select({{gene}})  # curly braces to unpack variable name
+    
+    # create plot
+    histo <- ggplot(data = data, aes_string(x = gene)) +
+    geom_histogram(fill = '#7f7da2', bins = 12) +
+    geom_vline(xintercept = mean(data[[gene]]), linetype = 'dashed', color = 'darkslategrey') +
+    annotate("text", x = mean(data[[gene]])+0.5*sd(data[[gene]]), y = Inf,
+             color = 'darkslategrey', label = 'Mean expression', vjust = 1.5) +
+    theme_minimal() +
+    labs(title = "Gene Expression Histogram",
+         x = paste0("Expression of ", gene),
+         y = "Number of Samples") +
+    theme(plot.title = element_text(hjust = 0.5))
+    
+    histogram_list <- list.append(histogram_list, histo)
+  }
+  
+  return (histogram_list)
+}
+
 ```
 
 Function 2: Scatter Plot
 ```{r}
+create_scatter <- function(df, genes, con_cov) {
+  
+  # create list for returning all plots
+  scatter_list = list()
+  
+  # loop over provided genes
+  for (gene in genes) {
+    
+    # prep data
+    df$covariate = suppressWarnings(as.numeric(df[[con_cov]]))
+    data <- df %>% 
+      filter(!is.na(covariate)) %>% 
+      select({{gene}}, covariate) 
+    
+    
+    # create plot
+    scatter <- ggplot(data = data, aes_string(x=gene, y = 'covariate')) +
+      geom_point() +
+      geom_smooth(method='lm', formula= y~x, color = 'darkslategray') +
+      theme_minimal() +
+      labs(title = paste0(con_cov," versus Gene Expression"),
+           x = paste0("Expression of ", gene),
+           y = con_cov,
+           caption = "Line of best fit and standard error") +
+      theme(plot.title = element_text(hjust = 0.5))
+    
+    scatter_list <- list.append(scatter_list, scatter)
+  }
+  
+  return (scatter_list)
+}
 ```
 
 
 Function 3: Box plot
 ```{r}
+create_boxplot <- function(df, genes, cat_cov1, cat_cov2) {
+  
+  # create list for returning all plots
+  boxplot_list = list()
+  
+  # loop over provided genes
+  for (gene in genes) {
+    
+    # prep data
+    data <- df %>% 
+      select({{gene}}, {{cat_cov1}}, {{cat_cov2}}) %>% 
+      na.omit()
+    
+    
+    # create plot
+    boxplot <- ggplot(data = data,
+                      aes_string(y=gene, x = cat_cov1, color = cat_cov2)) +
+      geom_boxplot() +
+      theme_minimal() +
+      labs(title = paste0("Gene Expression by ", cat_cov1, " and ", cat_cov2),
+           y = paste0("Expression of ", gene)) +
+      theme(plot.title = element_text(hjust = 0.5)) +
+      scale_colour_brewer(gsub('_', ' ', cat_cov2), palette = "Set1") +
+      scale_x_discrete(gsub('_', ' ', cat_cov1))
+    
+    boxplot_list <- list.append(boxplot_list, boxplot)
+  }
+  
+  return (boxplot_list)
+}
+
+```
+
+
+Implementation
+```{r}
+
+# list of three genes, first is my original (ABCA7)
+gene_list <- list("ABCA7", "AASS", "ABAT")
+
+
+# histograms
+histograms <- create_histo(cleaned_data, gene_list)
+
+histograms[1]
+
+histograms[2]
+
+histograms[3]
+
+
+# scatter plots
+scatters <- create_scatter(cleaned_data, gene_list, 'apacheii')
+
+scatters[1]
+
+scatters[2]
+
+scatters[3]
+
+
+# box plots
+boxplots <- create_boxplot(cleaned_data, gene_list, 'mechanical_ventilation', 'icu_status')
+
+boxplots[1]
+
+boxplots[2]
+
+boxplots[3]
+
 ```
