@@ -10,6 +10,8 @@ library(ggcorrplot)
 library(ggthemes)
 library(stringr)
 library(rlist)
+library(stargazer)
+
 
 
 # data import -------------------------------------------------------------
@@ -40,6 +42,60 @@ cleaned_data <- gene_data %>%
   arrange(participant_id)
 
 rm(gene_data, gene_data_raw, pheno_data_raw)
+
+
+# summary stats table -----------------------------------------------------
+
+# 2 additional continuous (3 total) and 1 additional categorical variable (3 total)
+
+# continuous: apacheii, ferritin(ng/ml), age
+
+# categorical: stratify on sex; mechanical_ventilation, icu_status
+
+categorical_table <- cleaned_data %>%
+  select(sex, mechanical_ventilation, icu_status) %>% 
+  filter(sex != 'unknown') %>% 
+  group_by(sex) %>% 
+  summarize(mv_n = sum(mechanical_ventilation=='yes'),
+            mv_p = round(mean(mechanical_ventilation=='yes')*100, 1),
+            icu_n = sum(icu_status == 'yes'),
+            icu_p = round(mean(icu_status == 'yes')*100, 1),
+            c = n()) %>% 
+  mutate('Sex' = sex,
+         `On Mechanical Ventilation` = paste0(mv_n, " (", mv_p, "%)"),
+         `In ICU` = paste0(icu_n, " (", icu_p, "%)"),
+         Count = c,
+         .keep='none')
+
+continuous_table <- cleaned_data %>%
+  select(apacheii, `ferritin(ng/ml)`, age, sex) %>% 
+  filter(sex != 'unknown') %>% 
+  filter(apacheii != 'unknown') %>% 
+  filter(`ferritin(ng/ml)` != 'unknown') %>% 
+  mutate(age = as.numeric(age),
+         apacheii = as.numeric(apacheii),
+         `ferritin(ng/ml)` = as.numeric(`ferritin(ng/ml)`)) %>% 
+  group_by(sex) %>% 
+  summarize(a_mean = round(mean(age, na.rm = T), 1),
+            a_sd = round(sd(age, na.rm = T), 1),
+            ap_mean = round(mean(apacheii, na.rm = T), 1),
+            ap_sd = round(sd(apacheii), 1),
+            f_mean = round(mean(`ferritin(ng/ml)`, na.rm = T)),
+            f_sd = round(sd(`ferritin(ng/ml)`))) %>% 
+  mutate('Sex' = sex,
+         Age = paste0(a_mean, " (", a_sd, ")"),
+         `Apache II` = paste0(ap_mean, " (", ap_sd, ")"),
+         `Ferritin (ng/mL)` = paste0(f_mean, " (", f_sd, ")"),
+         .keep = 'none')
+
+summary_table <- left_join(continuous_table, categorical_table, by = "Sex")
+rm(categorical_table, continuous_table, table_data, test)
+stargazer(summary_table,
+          type = 'latex',
+          title = "Summary Statistics",
+          summary = FALSE,
+          out = 'plots/summary_table.tex')
+
 
 # correlation plot --------------------------------------------------------
 
