@@ -6,7 +6,7 @@
 # libraries ---------------------------------------------------------------
 
 library(tidyverse)
-library(ggcorrplot)
+library(pheatmap)
 library(ggthemes)
 library(stringr)
 library(rlist)
@@ -19,6 +19,8 @@ library(stargazer)
 setwd("/Users/sabinhart/Desktop/QBS 103 - R/final-proj")
 gene_data_raw <- read_csv("./final-data/QBS103_GSE157103_genes.csv")
 pheno_data_raw <- read_csv("./final-data/QBS103_GSE157103_series_matrix.csv")
+set.seed(07212001)
+
 
 gene_data <- gene_data_raw %>% 
   rename("gene_name" = 1) %>% 
@@ -30,6 +32,15 @@ gene_data <- gene_data_raw %>%
 gene <- gene_data %>% 
   select(-1, -AADAC) %>% 
   select(sample(1:99, 15, replace = FALSE))
+
+covs <- pheno_data_raw %>% 
+  mutate(participant_id = as.numeric(sub(".*_(\\d+)_.*", "\\1", participant_id))) %>%
+  mutate(participant_id = case_when(
+    grepl('non', disease_status, ignore.case = TRUE) ~ participant_id + 200,
+    TRUE ~ participant_id
+  )) %>% 
+  select(sex, icu_status) %>% 
+  mutate(row_index = row_number())
 
 # combine data
 cleaned_data <- gene_data %>% 
@@ -89,25 +100,149 @@ continuous_table <- cleaned_data %>%
          .keep = 'none')
 
 summary_table <- left_join(continuous_table, categorical_table, by = "Sex")
-rm(categorical_table, continuous_table, table_data, test)
+rm(categorical_table, continuous_table)
 stargazer(summary_table,
           type = 'latex',
           title = "Summary Statistics",
           summary = FALSE,
-          out = 'plots/summary_table.tex')
+          out = 'plots/complete/summary_table.tex')
 
 
-# correlation plot --------------------------------------------------------
+# final plots -------------------------------------------------------------
 
-corr <- round(cor(gene),2)
+# data prep
+plot1_data <- cleaned_data %>% 
+  select('ABCA7')
 
-corr_plot <- ggcorrplot(corr, hc.order = TRUE, 
-           type = "upper", 
-           lab = TRUE, 
-           lab_size = 2, 
-           method="circle", 
-           colors = c("firebrick1", "white", "green2"), 
-           title="Gene Correlogram")
+# create plot
+plot1 <- ggplot(data = plot1_data, aes(x = ABCA7)) +
+  geom_histogram(fill = '#DE9151', bins = 12, binwidth = 5, center = 2.5, color = "#003844") +
+  geom_vline(xintercept = mean(plot1_data$ABCA7), linetype = 'dashed', color = '#003844') +
+  annotate("text", x = 31.5, y = 23, color = '#003844', label = 'Mean expression') +
+  theme_minimal() +
+  labs(title = "Gene Expression Histogram",
+       x = "Expression of ABCA7",
+       y = "Number of Samples") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(breaks = seq(0, 70, 10))
+plot1
 
-# ggsave("Correlogram.png", corr_plot, path = './plots')
-rm(gene, corr, corr_plot)
+# data prep
+plot2_data <- cleaned_data %>% 
+  filter(apacheii != 'unknown') %>% 
+  select(apacheii, ABCA7)
+
+# create plot
+plot2 <- ggplot(data = plot2_data, aes(x=ABCA7, y = as.numeric(`apacheii`))) +
+  geom_point() +
+  geom_smooth(method='lm', formula= y~x, color = '#DE9151', fill = "grey80") +
+  theme_minimal() +
+  labs(title = "ICU Disease Severity versus Gene Expression",
+       x = "Expression of ABCA7",
+       y = "APACHE II Score",
+       caption = "Line of best fit and standard error") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(limits = c(0, 45))
+
+plot2
+
+
+plot3_data <- cleaned_data %>% 
+  select(sex, icu_status, ABCA7) %>% 
+  filter(sex != 'unknown') %>% 
+  na.omit()
+
+
+# create plot
+plot3 <- ggplot(data = plot3_data, mapping = aes(y=ABCA7, x = sex, color = icu_status)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = paste0("Gene Expression by Sex and ICU Status"),
+       y = "Expression of ABCA7",
+       x = 'Sex') +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_colour_manual("ICU Status", values = c("#DE9151", "#003844"), 
+                      labels = c("No", "Yes")) +
+  scale_x_discrete(labels = c("Female", "Male")) 
+  
+plot3
+
+rm(plot1_data, plot2_data, plot3_data)
+
+# heatmap -----------------------------------------------------------------
+
+# data prep
+variances <- apply(gene, MARGIN = 1,FUN = var)
+genes <- gene[order(variances,decreasing = T),]
+genes[genes == 0] <- 0.000001
+log2.genes <- log2(genes) 
+log2.genes <- log2.genes %>%
+  mutate(row_index = row_number())
+
+# collect gene data with annotation cols and rename for clarity
+heatmap_data <- left_join(log2.genes, covs, by = "row_index") %>% 
+  select(-row_index) %>% 
+  rename('ICU Status' = icu_status,
+         'Sex'  = sex)
+
+# correct spelling for professionalism
+annotations <- heatmap_data[, c("Sex", "ICU Status")]
+annotations[annotations=='male'] <- 'Male'
+annotations[annotations=='female'] <- 'Female'
+annotations[annotations=='no'] <- 'Non-ICU'
+annotations[annotations=='yes'] <- 'ICU'
+
+
+
+annotation_colors <- list(
+  Sex = c("Male" = "#7C90DB", "Female" = "#712F79"),  # Example colors for sex
+  `ICU Status` = c("ICU" = "#A4303F", "Non-ICU" = "#B4C292")  # Example colors for icu_status
+)
+
+scaled_heatmap <- pheatmap(t(heatmap_data[1:15,1:15]),
+                    annotation_col = annotations,
+                    annotation_colors = annotation_colors,
+                    scale = "row")
+
+unscaled_heatmap <- pheatmap(t(heatmap_data[1:15,1:15]),
+                           annotation_col = annotations,
+                           annotation_colors = annotation_colors)
+
+rm(genes, heatmap_data, log2.genes, variances, covs, annotations, annotation_colors)
+
+
+# density plot ------------------------------------------------------------
+
+# prepare data
+density_data <- gene[11:15] %>% 
+  scale() %>% 
+  as.data.frame() %>% 
+  pivot_longer(everything(),
+               names_to = "Gene") 
+
+
+# plot
+density_plot <- ggplot(density_data, aes(value)) +
+  geom_density(aes(fill = factor(Gene)), alpha = 0.7) + 
+  labs(title="Relative Gene Density Plot", 
+       x="Normalized Gene Expression",
+       y = "Density",
+       fill="Gene") +
+  theme_few() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(limits = c(-2, 2))
+density_plot
+
+rm(density_data)
+
+
+# save plots --------------------------------------------------------------
+
+ggsave("histogram.jpg",
+       plot=plot1,
+       path="plots/complete/",
+       width = 6,
+       height = 5)
+
+
+
